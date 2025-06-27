@@ -5,6 +5,21 @@ library(tidyr)
 library(ggplot2)
 library(tibble) 
 
+biodiversity_clean <- biodiversity_clean %>%
+  filter(!(unit %in% c(124, 63)))
+
+biodiversity_clean <- biodiversity_clean %>%
+  rowwise() %>%
+  mutate(
+    total_cover = sum(c_across(c(B1, B2, L1, L2)), na.rm = TRUE),
+    rel_B1 = ifelse(total_cover > 0, (B1 / total_cover) * 100, 0),
+    rel_B2 = ifelse(total_cover > 0, (B2 / total_cover) * 100, 0),
+    rel_L1 = ifelse(total_cover > 0, (L1 / total_cover) * 100, 0),
+    rel_L2 = ifelse(total_cover > 0, (L2 / total_cover) * 100, 0)
+  ) %>%
+  ungroup()
+
+
 # Functional response variables
 func_vars <- c("ugPO4", "TotN", "TotC", "ugNH4", "ugNO3")
 
@@ -16,27 +31,29 @@ biodiversity_clean[func_vars] <- lapply(biodiversity_clean[func_vars], function(
 
 # Convert to factors
 biodiversity_clean$origin <- factor(biodiversity_clean$origin)
-biodiversity_clean$water <- factor(biodiversity_clean$water)
-
-# Create relative cover variables
-biodiversity_clean <- biodiversity_clean %>%
-  mutate(across(c(B1, B2, L1, L2), ~ .x / sum(c_across(B1:L2)), .names = "rel_{col}")) %>%
-  mutate(across(starts_with("rel_"), ~ replace_na(.x, 0)))
 
 # Define environmental variables
-env_vars <- c("rel_B1", "rel_B2", "rel_L1", "rel_L2")
+env_vars <- c("B1", "B2", "L1", "L2")
 
 # Prepare functional matrix and transform
 func_matrix <- biodiversity_clean %>% select(all_of(func_vars))
 func_hel <- decostand(func_matrix, method = "hellinger")
 
 # RDA model
-rda_model <- rda(func_hel ~ (rel_B1 + rel_B2 + rel_L1 + rel_L2) * water * origin, data = biodiversity_clean)
+rda_model <- rda(func_hel ~ (B1 + B2 + L1 + L2) * origin, data = biodiversity_clean)
+
+data <- scores(rda_model, display = "species")
+data
+data2 <- scores(rda_model, display = "bp")
+data2
 
 # Run permutation tests
 anova_full <- anova(rda_model, permutations = 999)
+anova_full
 anova_terms <- anova(rda_model, by = "terms", permutations = 999)
+anova_terms
 anova_axes <- anova(rda_model, by = "axis", permutations = 999)
+anova_axes
 
 # Axis table
 axis_table <- data.frame(
@@ -58,11 +75,13 @@ anova_terms_df$Significance <- cut(
 )
 anova_terms_df$Term <- rownames(anova_terms_df)
 anova_terms_df <- anova_terms_df[, c("Term", "Df", "Variance", "F", "Pr(>F)", "Significance")]
+
+anova_terms_df
 write.csv(anova_terms_df, "RDA_terms_results.csv", row.names = FALSE)
 
 # Extract significant environmental variables (p < 0.05)
 sig_env_vars <- anova_terms_df %>%
-  filter(Term %in% env_vars & `Pr(>F)` < 0.05) %>%
+  filter(Term %in% env_vars & `Pr(>F)` < 0.1) %>%
   pull(Term)
 
 # Extract scores
@@ -94,7 +113,7 @@ cn_scores$Factor <- rownames(cn_scores)
 # RDA biplot
 p <- ggplot() +
   geom_point(data = site_scores, aes(x = RDA1, y = RDA2, fill = Origin), shape = 21, size = 3, alpha = 0.7) +
-  scale_fill_manual(values = c("C" = "steelblue", "O" = "forestgreen")) +
+  scale_fill_manual(values = c("C" = "steelblue", "O" = "orange")) +
   labs(
     x = "RDA1", y = "RDA2",
     fill = "Origin"

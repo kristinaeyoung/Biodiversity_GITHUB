@@ -105,5 +105,18 @@ new_replicate_summary <- combined_data_clean %>%
   summarise(num_reps = n(), .groups = "drop") %>%
   arrange(date, water, origin, species_combo)))
 
+# Calculate 1.5*IQR cutoff
+q1 <- quantile(combined_data_clean$ugNH4, 0.25, na.rm = TRUE)
+q3 <- quantile(combined_data_clean$ugNH4, 0.75, na.rm = TRUE)
+iqr <- q3 - q1
+upper_bound <- q3 + 1.5 * iqr
+
+# Filter and show rows with ugNH4 above the upper bound
+outliers <- combined_data_clean %>%
+  filter(ugNH4 > upper_bound)
+
+combined_data_clean <- combined_data_clean %>%
+  filter(unit != 124)
+
 # Export the replicate summary table to CSV
-write.csv(combined_data_clean, "biodiversity_clean.csv", row.names = FALSE)
+write.csv(combined_data_clean, "biodiversity_clean_final.csv", row.names = FALSE)
